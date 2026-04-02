@@ -1,0 +1,48 @@
+# Django Backend Requirements - All FREE packages
+
+# Core Framework
+Django==4.2.7
+djangorestframework==3.14.0
+
+# Authentication
+djangorestframework-simplejwt==5.3.0
+
+# Database (PostgreSQL for production - FREE on Heroku/Railway)
+psycopg2-binary==2.9.9  # PostgreSQL adapter
+# SQLite is built into Python (already included for development)
+
+# CORS Headers (for Flutter app to connect)
+django-cors-headers==4.3.0
+
+# Filtering and Search
+django-filter==23.5
+
+# Image handling
+Pillow==10.1.0
+
+
+# Admin enhancements
+django-import-export==3.3.1  # Export data to Excel/CSV
+
+# API Documentation (FREE)
+drf-yasg==1.21.7  # Swagger/OpenAPI documentation
+
+# Testing
+pytest==7.4.3
+pytest-django==4.7.0
+
+# Code Quality
+flake8==6.1.0
+black==23.11.0
+
+# Deployment helpers
+gunicorn==21.2.0  # Production WSGI server
+whitenoise==6.6.0  # Static file serving
+
+# Utilities
+pytz==2023.3  # Timezone support
+python-dateutil==2.8.2
+
+google-auth==2.48.0
+pymysql==1.1.2
+django-unfold
