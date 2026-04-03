@@ -1199,3 +1199,21 @@ class VolunteerDashboardView(generics.GenericAPIView):
             'pending_tasks': pending_tasks,
             'average_rating': avg_rating
         })
+
+# ==============================
+# API for Language Preference
+# ==============================   
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def update_language(request):
+    """
+    PATCH /api/update-language/
+    Body: { "preferred_language": "hi" }
+    """
+    lang = request.data.get('preferred_language', '').strip()
+    valid = [code for code, _ in User.LANGUAGE_CHOICES]
+    if lang not in valid:
+        return Response({'error': f'Invalid language. Choose from: {valid}'}, status=400)
+    request.user.preferred_language = lang
+    request.user.save()
+    return Response({'message': 'Language updated.', 'preferred_language': lang})

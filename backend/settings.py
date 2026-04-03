@@ -110,14 +110,16 @@ TEMPLATES = [
 # --------------------------------------------------
 # Database (SQLite for Development) -> Changed to MySQL
 # --------------------------------------------------
+from decouple import config
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'my_django_db',
-        'USER': 'django_user',
-        'PASSWORD': 'my_strong_password',
-        'HOST': 'localhost',
-        'PORT': '3306',
+        'NAME': config('DB_NAME', default='my_django_db'),
+        'USER': config('DB_USER', default='django_user'),
+        'PASSWORD': config('DB_PASSWORD', default=''),
+        'HOST': config('DB_HOST', default='localhost'),
+        'PORT': config('DB_PORT', default='3306'),
     }
 }
 
