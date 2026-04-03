@@ -21,6 +21,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework.authtoken.views import obtain_auth_token
 from . import views
+from .views_ai import BuddyAIChatView
 
 # Create router for ViewSets
 router = DefaultRouter()
@@ -61,4 +62,7 @@ urlpatterns = [
     # Senior Profile specific
     path('seniors/<int:pk>/update/', views.UpdateSeniorView.as_view(), name='senior-update'),
     path('senior/me/', views.MySeniorProfileView.as_view(), name='senior-me'),
+
+    # AI Chatbot endpoint
+    path('ai-chat/', BuddyAIChatView.as_view(), name='buddy-ai-chat'),
 ]

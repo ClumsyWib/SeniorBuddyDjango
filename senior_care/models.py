@@ -33,13 +33,26 @@ class User(AbstractUser):
         ('ngo', 'NGO'),
     )
 
+    LANGUAGE_CHOICES = [
+        ('en', 'English'),
+        ('hi', 'Hindi'),
+        ('gu', 'Gujarati'),
+        ('ta', 'Tamil'),
+        ('te', 'Telugu'),
+        ('mr', 'Marathi'),
+        ('bn', 'Bengali'),
+        ('kn', 'Kannada'),
+        ('ml', 'Malayalam'),
+        ('pa', 'Punjabi'),
+    ]
+
     user_type = models.CharField(max_length=20, choices=USER_ROLES, default='family')
     phone_number = models.CharField(max_length=15, blank=True)
     address = models.TextField(blank=True)
     city = models.CharField(max_length=100, blank=True)
     state = models.CharField(max_length=100, blank=True)
     zip_code = models.CharField(max_length=20, blank=True)
-    
+
     date_of_birth = models.DateField(null=True, blank=True)
 
     emergency_contact_name = models.CharField(max_length=100, blank=True)
@@ -50,6 +63,12 @@ class User(AbstractUser):
     is_active_user = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     last_active = models.DateTimeField(auto_now=True)
+
+    preferred_language = models.CharField(
+        max_length=5,
+        choices=LANGUAGE_CHOICES,
+        default='en'
+    )
 
     def __str__(self):
         return self.username
@@ -517,3 +536,27 @@ class VolunteerRating(models.Model):
 
     def __str__(self):
         return f"Rating for {self.volunteer.username}: {self.rating}"
+    
+# ==============================
+# Buddy AI Conversation Log
+# ==============================
+class BuddyMessage(models.Model):
+    ROLE_CHOICES = [
+        ('user', 'User'),
+        ('assistant', 'Assistant'),
+    ]
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='buddy_messages'
+    )
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES)
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"{self.user.username} [{self.role}] at {self.created_at:%Y-%m-%d %H:%M}"
