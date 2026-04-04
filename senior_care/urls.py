@@ -21,7 +21,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework.authtoken.views import obtain_auth_token
 from . import views
-from .view_ai import BuddyAIChatView
+from .views_ai import BuddyAIChatView
 
 # Create router for ViewSets
 router = DefaultRouter()
