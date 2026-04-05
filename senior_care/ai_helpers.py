@@ -202,11 +202,10 @@ SAFETY RULES (highest priority — always apply):
 
     action_rules = f"""
 
-    ACTIONS: append ONE of these to the end of your response when intent is explicit \
-    and all fields are known. Never mention the block to the user. Ask for clarification if any required info is missing.
-    - Book appointment: <action>{{"type":"create_appointment","senior_id":<id>,"title":"...","date":"YYYY-MM-DD","time":"HH:MM"}}</action>
-    - Add medicine:     <action>{{"type":"create_medicine","senior_id":<id>,"medicine_name":"...","dosage":"...","frequency":"daily","start_date":"YYYY-MM-DD"}}</action>
-    - SOS alert:        <action>{{"type":"sos","senior_id":<id>}}</action>
+    ACTIONS — append ONE block at the very end of your reply when intent is explicit and all fields are known. Never mention the block to the user. Ask for missing info first.
+    - Book appointment (family only): <action>{{"type":"create_appointment","senior_id":<id>,"title":"...","date":"YYYY-MM-DD","time":"HH:MM"}}</action>
+    - Add medicine (family + caretaker): <action>{{"type":"create_medicine","senior_id":<id>,"medicine_name":"...","dosage":"...","frequency":"daily","start_date":"YYYY-MM-DD"}}</action>
+    - SOS alert (family + caretaker):   <action>{{"type":"sos","senior_id":<id>}}</action>
     Today is {today}."""
     
     return base + context_block + language_rules + behaviour_rules + action_rules
