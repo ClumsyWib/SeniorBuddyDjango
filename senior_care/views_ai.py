@@ -78,6 +78,7 @@ class BuddyAIChatView(APIView):
     def post(self, request):
         user_message = request.data.get('message', '').strip()
         history = request.data.get('history', [])
+        active_senior_id = request.data.get('active_senior_id') 
 
         if not user_message:
             return Response({'error': 'Message is required.'}, status=400)
@@ -105,7 +106,7 @@ class BuddyAIChatView(APIView):
                 reply = reply.replace(action_match.group(0), '').strip()
                 try:
                     action_data = json.loads(action_match.group(1))
-                    success, msg = _execute_action(request.user, action_data)
+                    success, msg = _execute_action(request.user, action_data, active_senior_id)
                     action_result = {'success': success, 'message': msg, 'type': action_data.get('type')}
                 except Exception:
                     action_result = {'success': False, 'message': 'Action could not be processed.', 'type': None}
