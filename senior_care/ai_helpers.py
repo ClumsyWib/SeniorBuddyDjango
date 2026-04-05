@@ -53,7 +53,7 @@ def build_context_for_user(user):
 
         if seniors:
             for s in seniors:
-                line = f"Managed senior: {s['name']}, age {s['age']}."
+                line = f"Managed senior: {s['name']} (senior_id={s['id']}), age {s['age']}."
                 if s['medical_conditions']:
                     line += f" Conditions: {s['medical_conditions'][:200]}."
                 if s['allergies']:
@@ -86,7 +86,7 @@ def build_context_for_user(user):
         if assignments:
             for a in assignments:
                 s = a.senior
-                line = f"Assigned senior: {s.name}, age {s.age}."
+                line = f"Assigned senior: {s.name} (senior_id={s.id}), age {s.age}."
                 if s.medical_conditions:
                     line += f" Conditions: {s.medical_conditions[:200]}."
                 lines.append(line)
@@ -197,4 +197,16 @@ SAFETY RULES (highest priority — always apply):
 - Never diagnose. Offer general guidance and always recommend consulting a doctor.
 - Never encourage any action that could harm the user's health or safety."""
 
-    return base + context_block + language_rules + behaviour_rules
+    from django.utils import timezone as tz
+    today = tz.now().date().isoformat()
+
+    action_rules = f"""
+
+    ACTIONS: append ONE of these to the end of your response when intent is explicit \
+    and all fields are known. Never mention the block to the user. Ask for clarification if any required info is missing.
+    - Book appointment: <action>{{"type":"create_appointment","senior_id":<id>,"title":"...","date":"YYYY-MM-DD","time":"HH:MM"}}</action>
+    - Add medicine:     <action>{{"type":"create_medicine","senior_id":<id>,"medicine_name":"...","dosage":"...","frequency":"daily","start_date":"YYYY-MM-DD"}}</action>
+    - SOS alert:        <action>{{"type":"sos","senior_id":<id>}}</action>
+    Today is {today}."""
+    
+    return base + context_block + language_rules + behaviour_rules + action_rules
