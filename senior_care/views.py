@@ -560,18 +560,18 @@ class MedicineViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         # Only Family Members can add medicines
-        if request.user.user_type not in FAMILY_TYPES:
-            return _permission_denied('add medicines', 'family member')
+        if request.user.user_type not in FAMILY_TYPES | CARETAKER_TYPES:
+            return _permission_denied('add medicines', 'family member or caretaker')
         return super().create(request, *args, **kwargs)
 
     def update(self, request, *args, **kwargs):
-        if request.user.user_type not in FAMILY_TYPES:
-            return _permission_denied('edit medicines', 'family member')
+        if request.user.user_type not in FAMILY_TYPES | CARETAKER_TYPES:
+            return _permission_denied('edit medicines', 'family member or caretaker')
         return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
-        if request.user.user_type not in FAMILY_TYPES:
-            return _permission_denied('delete medicines', 'family member')
+        if request.user.user_type not in FAMILY_TYPES | CARETAKER_TYPES:
+            return _permission_denied('delete medicines', 'family member or caretaker')
         return super().destroy(request, *args, **kwargs)
     
     @action(detail=False, methods=['get'])
