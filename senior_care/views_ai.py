@@ -6,92 +6,73 @@ from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from .ai_helpers import build_context_for_user, LANGUAGE_NAMES
-
-BUDDY_SYSTEM_PROMPT = """
-You are Buddy, a warm and caring AI companion designed specifically for elderly users.
-You serve two equally important purposes:
-
-1. COMPANIONSHIP — Be a genuine friend. Have relaxed, engaging conversations.
-Share jokes, stories, fun facts, and nostalgia. Ask about their day, their family,
-their interests, and their memories. Never make them feel like they are talking to
-a machine. Celebrate small things with them.
-
-2. HELPFUL ASSISTANT — When the user needs real help, switch naturally into a
-helpful mode. This includes:
-   - Health questions: symptoms, medications, side effects, when to see a doctor
-   - Emergency guidance: what to do if they feel chest pain, dizziness, a fall, etc.
-   - Daily tasks: reminders, simple how-tos, reading out information clearly
-   - Family coordination: helping them compose a message to a family member
-   - Mental wellness: if they seem sad, lonely, anxious, or confused — respond
-     with patience and empathy, and gently suggest speaking to a family member
-     or caregiver if needed
-
-TONE & BEHAVIOR RULES:
-- Always speak simply, warmly, and slowly. Avoid jargon.
-- Never be dismissive. Elderly users may repeat themselves — respond with the
-  same warmth every time.
-- If a user mentions chest pain, difficulty breathing, severe dizziness, or
-  any emergency — ALWAYS tell them to call emergency services or alert a
-  family member immediately before anything else.
-- Never diagnose. For health concerns, give general guidance and always
-  recommend consulting their doctor.
-- Seamlessly switch between companion mode and helper mode based on context.
-  A user might go from chatting about their grandchildren to asking about a
-  medication — handle both without making the transition feel abrupt.
-
-You are not just an AI. You are Buddy — a patient, cheerful, reliable
-presence in their day.
-"""
-
-
-def build_system_prompt(user):
-    """Builds the full system prompt with injected user context and language."""
-    context, language = build_context_for_user(user)
-    language_name = LANGUAGE_NAMES.get(language, 'English')
-
-    context_block = f"""
---- USER CONTEXT (use this to personalise your responses) ---
-{context}
--------------------------------------------------------------
-"""
-
-    language_block = f"""
-LANGUAGE INSTRUCTION:
-Always respond in {language_name}. Use simple, warm language suitable for elderly users.
-If the user writes in a different language, still respond in {language_name} unless
-it is an emergency — in which case respond in whatever language is clearest.
-"""
-
-    return BUDDY_SYSTEM_PROMPT + context_block + language_block
+from .ai_helpers import build_system_prompt
 
 
 def get_sarvam_client():
-    return OpenAI(
-        api_key=config('SARVAM_API_KEY'),
-        base_url="https://api.sarvam.ai/v1"
-    )
+    return OpenAI(api_key=config('SARVAM_API_KEY'), base_url="https://api.sarvam.ai/v1")
+
+
+def _execute_action(user, action_data, active_senior_id=None):
+    from .models import SeniorProfile, Appointment, Medicine, EmergencyAlert, CareAssignment
+
+    action_type = action_data.get('type')
+    # Flutter-pinned senior_id takes priority over AI-guessed one
+    senior_id = active_senior_id or action_data.get('senior_id')
+    if not senior_id:
+        return False, 'No senior specified.'
+
+    try:
+        if user.user_type in ('family',):
+            senior = SeniorProfile.objects.get(id=senior_id, family_member=user)
+        elif user.user_type == 'caretaker':
+            assignment = CareAssignment.objects.get(senior_id=senior_id, caretaker=user, is_active=True)
+            senior = assignment.senior
+        else:
+            return False, 'Action not permitted for volunteers.'
+
+        if action_type == 'create_appointment':
+            if user.user_type not in ('family',):
+                return False, 'Only family members can create appointments.'
+            Appointment.objects.create(
+                senior=senior,
+                title=action_data.get('title', 'Appointment'),
+                appointment_date=action_data['date'],
+                appointment_time=action_data['time'],
+                status='scheduled',
+            )
+            return True, f"Appointment '{action_data.get('title')}' scheduled for {action_data['date']} at {action_data['time']}."
+
+        elif action_type == 'create_medicine':
+            Medicine.objects.create(
+                senior=senior,
+                medicine_name=action_data.get('medicine_name', ''),
+                dosage=action_data.get('dosage', ''),
+                frequency=action_data.get('frequency', 'daily'),
+                start_date=action_data.get('start_date', timezone.now().date()),
+                is_active=True,
+            )
+            return True, f"Medicine '{action_data.get('medicine_name')}' added successfully."
+
+        elif action_type == 'sos':
+            EmergencyAlert.objects.create(
+                senior=senior,
+                alert_type='sos',
+                is_resolved=False,
+            )
+            return True, f"SOS alert triggered for {senior.name}."
+
+        return False, f"Unknown action: {action_type}"
+
+    except SeniorProfile.DoesNotExist:
+        return False, 'Senior not found or access denied.'
+    except CareAssignment.DoesNotExist:
+        return False, 'Senior not assigned to you.'
+    except Exception as e:
+        return False, str(e)
 
 
 class BuddyAIChatView(APIView):
-    """
-    POST /api/ai-chat/
-
-    Request body:
-    {
-        "message": "Hello Buddy!",
-        "history": [
-            {"role": "user", "content": "Hi"},
-            {"role": "assistant", "content": "Hello! How are you today?"}
-        ]
-    }
-
-    Response:
-    {
-        "reply": "Buddy's response here",
-        "history": [...]
-    }
-    """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -100,44 +81,44 @@ class BuddyAIChatView(APIView):
 
         if not user_message:
             return Response({'error': 'Message is required.'}, status=400)
-
         if not isinstance(history, list):
             history = []
-
-        # Keep last 20 turns to avoid token limits
         if len(history) > 20:
             history = history[-20:]
 
-        system_prompt = build_system_prompt(request.user)
-
         messages = [
-            {"role": "system", "content": system_prompt}
+            {"role": "system", "content": build_system_prompt(request.user)}
         ] + history + [
             {"role": "user", "content": user_message}
         ]
 
         try:
             client = get_sarvam_client()
-            response = client.chat.completions.create(
-                model="sarvam-m",
-                messages=messages,
-            )
-
+            response = client.chat.completions.create(model="sarvam-m", messages=messages)
             reply = response.choices[0].message.content
             reply = re.sub(r'<think>.*?</think>', '', reply, flags=re.DOTALL).strip()
 
+            # Parse and execute action if present
+            action_result = None
+            action_match = re.search(r'<action>(.*?)</action>', reply, re.DOTALL)
+            if action_match:
+                reply = reply.replace(action_match.group(0), '').strip()
+                try:
+                    action_data = json.loads(action_match.group(1))
+                    success, msg = _execute_action(request.user, action_data)
+                    action_result = {'success': success, 'message': msg, 'type': action_data.get('type')}
+                except Exception:
+                    action_result = {'success': False, 'message': 'Action could not be processed.', 'type': None}
+
             updated_history = history + [
                 {"role": "user", "content": user_message},
-                {"role": "assistant", "content": reply}
+                {"role": "assistant", "content": reply},
             ]
 
-            return Response({
-                "reply": reply,
-                "history": updated_history
-            })
+            resp = {"reply": reply, "history": updated_history}
+            if action_result:
+                resp['action_result'] = action_result
+            return Response(resp)
 
         except Exception as e:
-            return Response(
-                {'error': f'Buddy is unavailable right now. Please try again. ({str(e)})'},
-                status=503
-            )
+            return Response({'error': f'Buddy is unavailable right now. ({str(e)})'}, status=503)
