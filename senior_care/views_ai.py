@@ -32,6 +32,8 @@ def _execute_action(user, action_data, active_senior_id=None):
             return False, 'Action not permitted for volunteers.'
 
         if action_type == 'create_appointment':
+            if active_senior_id:
+                return False, 'Senior cannot create appointments for themselves.'
             if user.user_type not in ('family',):
                 return False, 'Only family members can create appointments.'
             Appointment.objects.create(

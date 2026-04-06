@@ -488,6 +488,8 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         # Only Family Members can create appointments
         if request.user.user_type not in FAMILY_TYPES:
             return _permission_denied('create appointments', 'family member')
+        if request.data.get('active_senior_id'):
+            return Response({'error': 'Senior cannot create appointments for themselves.'}, status=status.HTTP_403_FORBIDDEN)
         return super().create(request, *args, **kwargs)
 
     def update(self, request, *args, **kwargs):
