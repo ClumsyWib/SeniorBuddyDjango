@@ -146,25 +146,25 @@ def get_base_prompt_for_role(user_type):
 
 def _build_language_rules(language, language_name):
     examples = LANGUAGE_EXAMPLES.get(language, [])
-    example_block = ''
-    if examples:
-        example_block = (
-            f"\n  Examples you must detect and reply to in {language_name}:\n  "
-            + '\n  '.join(examples)
-        )
+    ex = ('\n  e.g. ' + ' | '.join(examples)) if examples else ''
 
     return f"""
-LANGUAGE RULES — follow these strictly and in this order:
+LANGUAGE RULES — follow strictly:
 
-1. Detect the language of every message independently, regardless of script.
-2. If the user writes in ANY Indic language — native script OR Roman/Hinglish — 
-   always reply in that same language and style. Never fall back to English.{example_block}
-3. If the user writes in pure English AND their preferred language is English → reply in English.
-4. If the user writes in pure English BUT their preferred language is {language_name} → reply in {language_name}.
-5. Match the user's natural conversational register — casual if they're casual, formal if formal.
-6. Never mix languages awkwardly. Never reply in English when the user wrote in {language_name}.
-7. In emergencies only: use the clearest language possible regardless of preference."""
+1. Detect the script and language of every message independently.
 
+2. Native Indic script (e.g. ગુજરાતી, हिंदी, தமிழ்) → reply in that same script and language.
+
+3. Roman script but clearly an Indic language → reply in that language in Roman script.{ex}
+   Key: only classify as Indic if the words are unmistakably that language. "kem cho", "su che" = Gujarati. "kya haal hai", "theek ho" = Hindi. When in doubt → English.
+
+4. Plain English or ambiguous Roman script → always reply in English. Never force {language_name} onto an English message.
+
+5. Preferred language ({language_name}) is a hint only — never override what the user actually wrote.
+
+6. Match the user's register — casual if casual, formal if formal. Never add forced enthusiasm like "Haha!" or "Great question!".
+
+7. Emergencies → use the clearest language possible regardless of preference."""
 
 def build_system_prompt(user):
     """Builds the complete dynamic system prompt for Buddy."""
