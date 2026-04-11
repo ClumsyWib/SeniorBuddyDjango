@@ -3,10 +3,12 @@ import json
 from openai import OpenAI
 from decouple import config
 from django.utils import timezone
+from django.core.mail import send_mail
+from django.conf import settings
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from .ai_helpers import build_system_prompt
+from .ai_helpers import build_system_prompt, build_context_for_user
 
 
 def get_sarvam_client():
@@ -17,7 +19,6 @@ def _execute_action(user, action_data, active_senior_id=None):
     from .models import SeniorProfile, Appointment, Medicine, EmergencyAlert, CareAssignment
 
     action_type = action_data.get('type')
-    # Flutter-pinned senior_id takes priority over AI-guessed one
     senior_id = active_senior_id or action_data.get('senior_id')
     if not senior_id:
         return False, 'No senior specified.'
@@ -62,7 +63,9 @@ def _execute_action(user, action_data, active_senior_id=None):
                 alert_type='sos',
                 is_resolved=False,
             )
-            return True, f"SOS alert triggered for {senior.name}."
+            # Email fallback — notify family member
+            _send_sos_email(senior)
+            return True, f"SOS alert triggered for {senior.name}. Family has been notified."
 
         return False, f"Unknown action: {action_type}"
 
@@ -74,13 +77,64 @@ def _execute_action(user, action_data, active_senior_id=None):
         return False, str(e)
 
 
+def _send_sos_email(senior):
+    """Send SOS email notification to the senior's family member."""
+    try:
+        family_member = getattr(senior, 'family_member', None)
+        if not family_member or not family_member.email:
+            return
+        send_mail(
+            subject=f'🚨 SOS Alert — {senior.name}',
+            message=(
+                f'An SOS alert has been triggered for {senior.name} via Senior Buddy.\n\n'
+                f'Please check on them immediately.\n\n'
+                f'This alert was sent at {timezone.now().strftime("%d %b %Y, %I:%M %p")}.'
+            ),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[family_member.email],
+            fail_silently=True,
+        )
+    except Exception:
+        pass  # Never let email failure block the SOS action result
+
+
+def _call_sarvam(messages):
+    client = get_sarvam_client()
+    response = client.chat.completions.create(model="sarvam-m", messages=messages)
+    reply = response.choices[0].message.content
+    return re.sub(r'<think>.*?</think>', '', reply, flags=re.DOTALL).strip()
+
+
+class BuddyGreetingView(APIView):
+    """Returns a context-aware opening message for the chat screen."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            context, _ = build_context_for_user(request.user)
+            system = build_system_prompt(request.user)
+            hour = timezone.localtime(timezone.now()).hour
+            time_of_day = 'morning' if hour < 12 else 'afternoon' if hour < 17 else 'evening'
+
+            messages = [
+                {"role": "system", "content": system},
+                {"role": "user", "content": f"__greeting__ time={time_of_day}"},
+            ]
+            greeting = _call_sarvam(messages)
+            # Strip any accidental action blocks from greeting
+            greeting = re.sub(r'<action>.*?</action>', '', greeting, flags=re.DOTALL).strip()
+            return Response({'greeting': greeting})
+        except Exception:
+            return Response({'greeting': "Hello! I'm Buddy. How can I help you today?"})
+
+
 class BuddyAIChatView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         user_message = request.data.get('message', '').strip()
         history = request.data.get('history', [])
-        active_senior_id = request.data.get('active_senior_id') 
+        active_senior_id = request.data.get('active_senior_id')
 
         if not user_message:
             return Response({'error': 'Message is required.'}, status=400)
@@ -96,12 +150,8 @@ class BuddyAIChatView(APIView):
         ]
 
         try:
-            client = get_sarvam_client()
-            response = client.chat.completions.create(model="sarvam-m", messages=messages)
-            reply = response.choices[0].message.content
-            reply = re.sub(r'<think>.*?</think>', '', reply, flags=re.DOTALL).strip()
+            reply = _call_sarvam(messages)
 
-            # Parse and execute action if present
             action_result = None
             action_match = re.search(r'<action>(.*?)</action>', reply, re.DOTALL)
             if action_match:

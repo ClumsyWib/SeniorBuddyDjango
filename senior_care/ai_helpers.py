@@ -1,4 +1,5 @@
 from django.utils import timezone
+from datetime import timedelta
 from .models import SeniorProfile, CareAssignment, Appointment, Medicine
 
 LANGUAGE_NAMES = {
@@ -34,6 +35,39 @@ LANGUAGE_EXAMPLES = {
 }
 
 
+def _format_appointments(appointments):
+    """Format appointment queryset into a readable string grouped by day."""
+    today = timezone.now().date()
+    today_list, tomorrow_list = [], []
+    for a in appointments:
+        label = f"{a['title']} for {a['senior__name']} at {a['appointment_time'].strftime('%I:%M %p')}"
+        if a['appointment_date'] == today:
+            today_list.append(label)
+        else:
+            tomorrow_list.append(label)
+    parts = []
+    if today_list:
+        parts.append(f"Today's appointments: {', '.join(today_list)}.")
+    if tomorrow_list:
+        parts.append(f"Tomorrow's appointments: {', '.join(tomorrow_list)}.")
+    return parts
+
+
+def _format_medicines(senior_ids):
+    """Return active medicines line for given senior ids."""
+    medicines = Medicine.objects.filter(
+        senior_id__in=senior_ids,
+        is_active=True
+    ).values('medicine_name', 'dosage', 'frequency', 'senior__name')[:6]
+    if not medicines:
+        return None
+    med_list = ', '.join(
+        f"{m['medicine_name']} {m['dosage']} ({m['frequency']}) for {m['senior__name']}"
+        for m in medicines
+    )
+    return f"Active medicines: {med_list}."
+
+
 def build_context_for_user(user):
     """
     Returns (context_string, language_code) for the logged-in user.
@@ -45,11 +79,12 @@ def build_context_for_user(user):
     lines.append(f"Role: {user_type}.")
 
     today = timezone.now().date()
+    tomorrow = today + timedelta(days=1)
 
     if user_type == 'family':
         seniors = SeniorProfile.objects.filter(
             family_member=user
-        ).values('name', 'age', 'medical_conditions', 'allergies')[:3]
+        ).values('id', 'name', 'age', 'medical_conditions', 'allergies')[:3]
 
         if seniors:
             for s in seniors:
@@ -60,22 +95,19 @@ def build_context_for_user(user):
                     line += f" Allergies: {s['allergies'][:100]}."
                 lines.append(line)
 
-            senior_ids = SeniorProfile.objects.filter(
-                family_member=user
-            ).values_list('id', flat=True)
+            senior_ids = [s['id'] for s in seniors]
 
             upcoming = Appointment.objects.filter(
                 senior_id__in=senior_ids,
-                appointment_date=today,
+                appointment_date__in=[today, tomorrow],
                 status='scheduled'
-            ).values('title', 'appointment_time', 'senior__name')[:3]
+            ).values('title', 'appointment_time', 'appointment_date', 'senior__name').order_by('appointment_date', 'appointment_time')[:5]
 
-            if upcoming:
-                appt_list = ', '.join(
-                    f"{a['title']} for {a['senior__name']} at {a['appointment_time'].strftime('%I:%M %p')}"
-                    for a in upcoming
-                )
-                lines.append(f"Today's appointments: {appt_list}.")
+            lines.extend(_format_appointments(upcoming))
+
+            med_line = _format_medicines(senior_ids)
+            if med_line:
+                lines.append(med_line)
 
     elif user_type == 'caretaker':
         assignments = CareAssignment.objects.filter(
@@ -95,16 +127,15 @@ def build_context_for_user(user):
 
             upcoming = Appointment.objects.filter(
                 senior_id__in=senior_ids,
-                appointment_date=today,
+                appointment_date__in=[today, tomorrow],
                 status='scheduled'
-            ).values('title', 'appointment_time', 'senior__name')[:3]
+            ).values('title', 'appointment_time', 'appointment_date', 'senior__name').order_by('appointment_date', 'appointment_time')[:5]
 
-            if upcoming:
-                appt_list = ', '.join(
-                    f"{a['title']} for {a['senior__name']} at {a['appointment_time'].strftime('%I:%M %p')}"
-                    for a in upcoming
-                )
-                lines.append(f"Today's appointments: {appt_list}.")
+            lines.extend(_format_appointments(upcoming))
+
+            med_line = _format_medicines(senior_ids)
+            if med_line:
+                lines.append(med_line)
 
     elif user_type == 'volunteer':
         lines.append("This user is a volunteer. They assist seniors with tasks and companionship.")
@@ -208,5 +239,5 @@ SAFETY (overrides everything):
     - Add medicine (family + caretaker): <action>{{"type":"create_medicine","senior_id":<id>,"medicine_name":"...","dosage":"...","frequency":"daily","start_date":"YYYY-MM-DD"}}</action>
     - SOS alert (family + caretaker):   <action>{{"type":"sos","senior_id":<id>}}</action>
     Today is {today}."""
-    
+
     return base + context_block + language_rules + behaviour_rules + action_rules
